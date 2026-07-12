@@ -1,0 +1,12 @@
+AI Agent 是一种能够自主完成任务的人工智能系统。
+
+LLM 是 Large Language Model 的缩写，例如 GPT、DeepSeek。
+
+RAG 是 Retrieval Augmented Generation 的缩写，
+通过检索外部知识增强大语言模型回答能力。
+
+LangChain 是一个用于开发 LLM 应用的框架。
+
+Embedding 是把文本转换成向量表示的方法。
+
+FAISS 是 Facebook AI Research 开发的向量检索数据库。
