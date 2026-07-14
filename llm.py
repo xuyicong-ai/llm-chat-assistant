@@ -1,7 +1,7 @@
 import os
 from openai import OpenAI
 from dotenv import load_dotenv
-from prompt import SYSTEM_PROMPT
+from prompt import SYSTEM_PROMPT, build_rag_prompt
 
 load_dotenv()
 
@@ -32,3 +32,16 @@ def get_llm_response(messages):
     )
 
     return response.choices[0].message.content
+
+def get_rag_response(messages, context):
+    question = messages[-1]["content"]
+    rag_prompt = build_rag_prompt(question, context)
+
+    rag_messages = messages[:-1] + [
+        {
+            "role": "user",
+            "content": rag_prompt
+        }
+    ]
+
+    return get_llm_response(rag_messages)
