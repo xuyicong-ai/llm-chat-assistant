@@ -1,11 +1,88 @@
-from langchain_community.document_loaders import TextLoader
+from langchain_community.document_loaders import TextLoader, PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
-from llm import get_rag_response
+
+# 加载 PDF
+def load_pdf_documents(file_path):
+    loader = PyPDFLoader(file_path)
+    documents = loader.load()
+
+    return documents
+
+# 创建 FAISS 向量数据库
+def build_vectorstore(documents):
+
+    chunks = splitter.split_documents(documents)
+
+    print("chunk数量:", len(chunks))
+
+    vectorstore = FAISS.from_documents(
+        chunks,
+        embeddings
+    )
+    
+    return vectorstore
+
+def load_saved_vectorstore(folder_path):
+    vectorstore = FAISS.load_local(
+        folder_path,
+        embeddings,
+        allow_dangerous_deserialization=True
+    )
+
+    return vectorstore
+
+def retrieve_from_vectorstore(
+    vectorstore,
+    query,
+    k=3,
+    max_distance=0.8
+):
+    scored_results = (
+        vectorstore.similarity_search_with_score(
+            query,
+            k=k
+        )
+    )
+
+    retrieved_documents = []
+
+    for doc, score in scored_results:
+        if score <= max_distance:
+            retrieved_documents.append(doc)
+
+    return retrieved_documents
+
+# 构建提供给 LLM 的参考资料
+def build_context(documents):
+    context = "\n\n".join(
+        doc.page_content for doc in documents
+    )
+
+    return context
 
 
-# 读取文档
+# 初始化文本切分器
+splitter = RecursiveCharacterTextSplitter(
+    chunk_size=800,
+    chunk_overlap=150
+)
+
+
+# 初始化 Qwen3 Embedding
+embeddings = HuggingFaceEmbeddings(
+    model_name="./models/qwen3-embedding-0.6b",
+    model_kwargs={
+        "device": "cpu"
+    },
+    encode_kwargs={
+        "normalize_embeddings": True
+    },
+    show_progress=True
+)
+
+# 加载原来的 TXT 知识库
 loader = TextLoader(
     "knowledge/ai_notes.txt",
     encoding="utf-8"
@@ -14,89 +91,76 @@ loader = TextLoader(
 documents = loader.load()
 
 
-# 切分
-splitter = RecursiveCharacterTextSplitter(
-    chunk_size=100,
-    chunk_overlap=20
-)
+# 创建原 TXT 的 FAISS 数据库
+vectorstore = build_vectorstore(documents)
 
-chunks = splitter.split_documents(documents)
-
-print("chunk数量:", len(chunks))
+print("TXT FAISS数据库创建成功")
 
 
-# Qwen3 Embedding
-embeddings = HuggingFaceEmbeddings(
-    model_name="./models/qwen3-embedding-0.6b",
-    model_kwargs={
-        "device": "cpu"
-    },
-    encode_kwargs={
-        "normalize_embeddings": True
-    }
-)
-
-
-# FAISS
-vectorstore = FAISS.from_documents(
-    chunks,
-    embeddings
-)
-
-print("FAISS数据库创建成功")
-
-def retrieve_documents(query, k=2, max_distance=0.8):
-    scored_results = vectorstore.similarity_search_with_score(
-        query,
-        k=k
+# 在原 TXT 知识库中检索，并进行距离过滤
+def retrieve_documents(
+    query,
+    k=2,
+    max_distance=0.8
+):
+    scored_results = (
+        vectorstore.similarity_search_with_score(
+            query,
+            k=k
+        )
     )
 
-    documents = []
+    retrieved_documents = []
 
     for doc, score in scored_results:
         if score <= max_distance:
-            documents.append(doc)
+            retrieved_documents.append(doc)
 
-    return documents
+    return retrieved_documents
 
+
+# 查看原 TXT 知识库的原始检索距离
 def retrieve_documents_with_scores(query, k=3):
     return vectorstore.similarity_search_with_score(
         query,
         k=k
     )
 
-def build_context(documents):
-    context = "\n\n".join(
-        doc.page_content for doc in documents
-    )
-    return context
 
-# 测试检索
+# 只有直接运行 rag.py 时，才执行 PDF 检索测试
 if __name__ == "__main__":
-    # 仅在直接运行 rag.py 时执行测试
-    query = "Python的装饰器是什么？"
+    print("\n正在加载已有 PDF 向量数据库...")
 
-    results = retrieve_documents(query, k=2)
-    context = build_context(results)
+    pdf_vectorstore = load_saved_vectorstore(
+        "vectorstores/attention_pdf"
+    )
 
-    test_messages = [
-        {
-            "role": "user",
-            "content": query
-        }
-    ]
+    print("PDF向量数据库加载成功")
 
-    if results:
-        answer = get_rag_response(test_messages, context)
-        print("\nDeepSeek RAG 回答:")
-        print(answer)
-    else:
-        print("\n知识库没有检索到相关内容。")
+    query = "What is multi-head attention?"
 
-    scored_results = retrieve_documents_with_scores(query, k=3)
+    pdf_results = (
+        pdf_vectorstore.similarity_search_with_score(
+            query,
+            k=3
+        )
+    )
 
-    print("\n检索距离:")
-    for doc, score in scored_results:
+    print("\nPDF检索问题:", query)
+    print("\nPDF检索结果:")
+
+    for doc, score in pdf_results:
         print("----------------")
         print("距离:", score)
-        print("内容:", doc.page_content)
+        print(
+            "PDF页码:",
+            doc.metadata["page"] + 1
+        )
+        print(
+            "来源:",
+            doc.metadata["source"]
+        )
+        print(
+            "内容:",
+            doc.page_content[:300]
+        )
