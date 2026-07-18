@@ -5,3 +5,6 @@ langchain
 langchain-openai
 langchain-community
 pypdf
+langchain-huggingface
+sentence-transformers
+faiss-cpuji

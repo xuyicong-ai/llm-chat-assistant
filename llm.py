@@ -5,9 +5,17 @@ from prompt import SYSTEM_PROMPT, build_rag_prompt
 
 load_dotenv()
 
-client = OpenAI(
-    api_key=os.getenv("DEEPSEEK_API_KEY"),
-    base_url="https://api.deepseek.com"
+deepseek_api_key = os.getenv(
+    "DEEPSEEK_API_KEY"
+)
+
+client = (
+    OpenAI(
+        api_key=deepseek_api_key,
+        base_url="https://api.deepseek.com"
+    )
+    if deepseek_api_key
+    else None
 )
 
 def get_llm_response(messages):
@@ -20,7 +28,13 @@ def get_llm_response(messages):
         {"role": "assistant", "content": "你好，有什么可以帮你？"}
     ]
     """
-
+    if client is None:
+        raise RuntimeError(
+            "没有找到 DEEPSEEK_API_KEY。"
+            "请在 .env 文件中配置 API Key，"
+            "然后重新启动应用。"
+        )
+    
     final_messages = [
         {"role": "system", "content": SYSTEM_PROMPT}
     ] + messages

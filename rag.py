@@ -1,3 +1,4 @@
+from pathlib import Path
 from langchain_community.document_loaders import TextLoader, PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -7,6 +8,19 @@ from langchain_community.vectorstores import FAISS
 def load_pdf_documents(file_path):
     loader = PyPDFLoader(file_path)
     documents = loader.load()
+
+    # 取得 PDF 文件名
+    source_name = Path(file_path).name
+
+    # 将文件名加入每一页的正文，
+    # 使文件名也参与向量检索
+    for document in documents:
+        # 只有存在正文的页面才添加文件名
+        if document.page_content.strip():
+            document.page_content = (
+                f"文档名称：{source_name}\n\n"
+                f"{document.page_content}"
+            )
 
     return documents
 
@@ -48,8 +62,40 @@ def retrieve_from_vectorstore(
 
     retrieved_documents = []
 
+    # 检查用户是否明确指定了文档类型
+    mentioned_document_types = set()
+
+    if "讲稿" in query:
+        mentioned_document_types.add("讲稿")
+
+    if "论文" in query:
+        mentioned_document_types.add("论文")
+
     for doc, score in scored_results:
+        source_path = doc.metadata.get(
+            "source",
+            ""
+        )
+
+        source_name = Path(source_path).stem
+
+        # 用户指定文档后，跳过其他文档
+        if mentioned_document_types:
+            source_matches = any(
+                document_type in source_name
+                for document_type
+                in mentioned_document_types
+            )
+
+            if not source_matches:
+                continue
+
         if score <= max_distance:
+            # 把检索距离写入文档元数据
+            doc.metadata["distance_score"] = float(
+                score
+            )
+
             retrieved_documents.append(doc)
 
     return retrieved_documents

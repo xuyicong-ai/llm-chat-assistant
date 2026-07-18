@@ -1,5 +1,5 @@
 from pathlib import Path
-
+from langchain_core.documents import Document
 import streamlit as st
 
 from llm import get_rag_response
@@ -85,136 +85,244 @@ if saved_indexes:
         with st.spinner(
             "正在加载已有向量数据库..."
         ):
-            st.session_state.active_vectorstore = (
-                load_saved_vectorstore(
-                    str(
-                        saved_indexes[
-                            selected_index_name
-                        ]
+            try:
+                selected_path = (
+                    saved_indexes[
+                        selected_index_name
+                    ]
+                )
+
+                # 先加载到临时变量
+                loaded_vectorstore = (
+                    load_saved_vectorstore(
+                        str(selected_path)
                     )
                 )
-            )
 
-            st.session_state.active_pdf_name = (
-                selected_index_name
-            )
+                # 加载成功后再切换知识库
+                st.session_state.active_vectorstore = (
+                    loaded_vectorstore
+                )
 
-            st.session_state.messages = []
+                st.session_state.active_pdf_name = (
+                    selected_index_name
+                )
 
-            st.success(
-                f"{selected_index_name} "
-                f"知识库加载成功"
-            )
+                st.session_state.messages = []
 
-# 上传 PDF
-uploaded_file = st.sidebar.file_uploader(
+                st.success(
+                    f"{selected_index_name} "
+                    f"知识库加载成功"
+                )
+
+            except Exception as error:
+                st.error(
+                    f"{selected_index_name} "
+                    f"知识库加载失败。"
+                )
+
+                with st.expander(
+                    "查看加载错误详情"
+                ):
+                    st.code(str(error))
+
+# 上传多个 PDF
+uploaded_files = st.sidebar.file_uploader(
     "上传 PDF 知识库",
-    type=["pdf"]
+    type=["pdf"],
+    accept_multiple_files=True
 )
 
+if uploaded_files:
+    max_pdf_count = 10
+    max_total_size_mb = 50
 
-if uploaded_file is not None:
-    file_size_mb = (
-        uploaded_file.size / 1024 / 1024
-    )
+    total_size_mb = sum(
+        uploaded_file.size
+        for uploaded_file in uploaded_files
+    ) / 1024 / 1024
 
+    upload_is_valid = True
+
+    if len(uploaded_files) > max_pdf_count:
+        st.sidebar.error(
+            f"一次最多上传 "
+            f"{max_pdf_count} 个 PDF。"
+        )
+
+        upload_is_valid = False
+
+    if total_size_mb > max_total_size_mb:
+        st.sidebar.error(
+            f"PDF 总大小不能超过 "
+            f"{max_total_size_mb} MB。"
+        )
+
+        upload_is_valid = False
     st.sidebar.success(
-        f"已选择：{uploaded_file.name}"
+        f"已选择 {len(uploaded_files)} 个 PDF，"
+        f"共 {total_size_mb:.2f} MB"
     )
 
-    st.sidebar.caption(
-        f"文件大小：{file_size_mb:.2f} MB"
-    )
+    for uploaded_file in uploaded_files:
+        file_size_mb = (
+            uploaded_file.size / 1024 / 1024
+        )
 
+        st.sidebar.caption(
+            f"{uploaded_file.name} · "
+            f"{file_size_mb:.2f} MB"
+        )
     # 创建上传文件目录
     upload_dir = Path("uploads")
     upload_dir.mkdir(exist_ok=True)
 
-    # 只保留文件名，防止路径问题
-    safe_file_name = Path(
-        uploaded_file.name
-    ).name
-
-    uploaded_path = (
-        upload_dir / safe_file_name
-    )
-
-    # 将上传对象保存为本地 PDF
-    uploaded_path.write_bytes(
-        uploaded_file.getbuffer()
-    )
-
     st.sidebar.caption(
-        "PDF 已保存，等待建立知识库"
+        "等待建立多 PDF 知识库"
     )
 
-    # 只有点击按钮后才计算 Embedding
+    # 只有点击按钮后，才保存和解析所有 PDF
     if st.sidebar.button(
         "建立 PDF 知识库",
-        type="primary"
+        type="primary",
+        disabled=not upload_is_valid
     ):
         with st.spinner(
-            "正在解析 PDF 并创建向量数据库..."
+            "正在解析多个 PDF 并创建向量数据库..."
         ):
-            uploaded_documents = (
-                load_pdf_documents(
-                    str(uploaded_path)
-                )
-            )
+            # 用于保存所有 PDF 解析出来的页面
+            all_documents = []
 
-            # 删除没有正文的页面
-            valid_documents = [
-                doc
-                for doc in uploaded_documents
-                if doc.page_content.strip()
-            ]
+            # 用于记录成功加入知识库的文件名
+            valid_pdf_names = []
 
-            if not valid_documents:
+            # 依次处理每一个上传的 PDF
+            for uploaded_file in uploaded_files:
+                # 清理文件名，避免路径问题
+                safe_file_name = Path(
+                    uploaded_file.name
+                ).name
+
+                try:
+                    uploaded_path = (
+                        upload_dir / safe_file_name
+                    )
+
+                    # 将当前 PDF 保存到 uploads 目录
+                    uploaded_path.write_bytes(
+                        uploaded_file.getbuffer()
+                    )
+
+                    # 解析当前 PDF
+                    pdf_documents = (
+                        load_pdf_documents(
+                            str(uploaded_path)
+                        )
+                    )
+
+                    # 删除没有正文的页面
+                    valid_pages = [
+                        doc
+                        for doc in pdf_documents
+                        if doc.page_content.strip()
+                    ]
+
+                    if valid_pages:
+                        # 将有效页面加入总文档列表
+                        all_documents.extend(
+                            valid_pages
+                        )
+
+                        valid_pdf_names.append(
+                            safe_file_name
+                        )
+
+                    else:
+                        st.warning(
+                            f"{safe_file_name} "
+                            f"没有可提取的文字，已跳过。"
+                        )
+
+                except Exception as error:
+                    st.error(
+                        f"{safe_file_name} 处理失败，"
+                        f"已跳过该文件。"
+                    )
+
+                    # 将详细错误放入折叠区域
+                    with st.expander(
+                        f"查看 {safe_file_name} 的错误详情"
+                    ):
+                        st.code(str(error))
+
+            # 所有 PDF 都解析完成后再统一判断
+            if not all_documents:
                 st.error(
-                    "PDF 没有可提取的文字。"
-                    "它可能是扫描件，需要 OCR。"
+                    "上传的 PDF 都没有可提取的文字。"
+                    "它们可能是扫描件，需要 OCR。"
                 )
 
             else:
-                uploaded_vectorstore = (
-                    build_vectorstore(
-                        valid_documents
+                try:
+                    # 使用所有 PDF 的页面建立向量库
+                    uploaded_vectorstore = (
+                        build_vectorstore(
+                            all_documents
+                        )
                     )
-                )
 
-                # 切换到新建的向量库
-                st.session_state.active_vectorstore = (
-                    uploaded_vectorstore
-                )
+                    # 生成知识库显示名称
+                    knowledge_base_name = " + ".join(
+                        valid_pdf_names
+                    )
 
-                st.session_state.active_pdf_name = (
-                    safe_file_name
-                )
+                    # 生成索引目录名称
+                    index_name = "__".join(
+                        Path(pdf_name).stem
+                        for pdf_name in valid_pdf_names
+                    )
 
-                # 建库完成后立即保存索引，避免刷新后丢失
-                index_name = Path(
-                    safe_file_name
-                ).stem
+                    index_path = (
+                        Path("vectorstores")
+                        / "uploads"
+                        / index_name
+                    )
 
-                index_path = (
-                    Path("vectorstores")
-                    / "uploads"
-                    / index_name
-                )
+                    # 先保存索引
+                    uploaded_vectorstore.save_local(
+                        str(index_path)
+                    )
 
-                uploaded_vectorstore.save_local(
-                    str(index_path)
-                )
+                    # 保存成功后再切换当前知识库
+                    st.session_state.active_vectorstore = (
+                        uploaded_vectorstore
+                    )
 
-                # 切换知识库后清空旧对话
-                st.session_state.messages = []
+                    st.session_state.active_pdf_name = (
+                        knowledge_base_name
+                    )
 
-                st.success(
-                    f"{safe_file_name} "
-                    f"知识库创建并保存成功"
-                )
+                    # 切换知识库后清空旧对话
+                    st.session_state.messages = []
 
-                st.rerun()
+                    st.success(
+                        f"已将 {len(valid_pdf_names)} "
+                        f"个 PDF 合并为一个知识库"
+                    )
+
+                    st.rerun()
+
+                except Exception as error:
+                    st.error(
+                        "向量数据库创建或保存失败，"
+                        "当前知识库没有切换。"
+                    )
+
+                    with st.expander(
+                        "查看建库错误详情"
+                    ):
+                        st.code(str(error))
+
 
 
 # 显示历史消息
@@ -244,6 +352,14 @@ for message in st.session_state.messages:
                         )
 
                     st.markdown(source_title)
+
+                    score = source.get("score")
+
+                    if score is not None:
+                        st.caption(
+                            f"检索距离：{score:.4f}"
+                        )
+
                     st.write(source["content"])
 
         # 显示历史 Token 用量
@@ -279,52 +395,92 @@ if user_input:
     # 检索并生成回答
     with st.chat_message("assistant"):
         with st.spinner("AI 正在思考..."):
-            documents = (
-                retrieve_from_vectorstore(
-                    st.session_state.active_vectorstore,
-                    user_input,
-                    k=3,
-                    max_distance=0.8
-                )
-            )
+            # 先设置默认值，确保失败后变量仍然存在
+            documents: list[Document] = []
+            usage = None
 
-            context = build_context(documents)
-
-            if documents:
-                result = get_rag_response(
-                    st.session_state.messages,
-                    context
+            try:
+                # 从当前知识库检索资料
+                documents = (
+                    retrieve_from_vectorstore(
+                        st.session_state.active_vectorstore,
+                        user_input,
+                        k=6,
+                        max_distance=1.2
+                    )
                 )
 
+                context = build_context(documents)
+
+                if documents:
+                    # 调用模型生成回答
+                    result = get_rag_response(
+                        st.session_state.messages,
+                        context
+                    )
+
+                    assistant_response = (
+                        result["content"]
+                    )
+
+                    usage = result["usage"]
+
+                else:
+                    assistant_response = (
+                        "根据当前知识库，"
+                        "没有检索到与该问题相关的信息。"
+                    )
+
+            except Exception as error:
                 assistant_response = (
-                    result["content"]
+                    "回答生成失败，请稍后重试。"
+                    "当前对话和知识库没有丢失。"
                 )
 
-                usage = result["usage"]
-
-            else:
-                assistant_response = (
-                    "根据当前知识库，"
-                    "没有检索到与该问题相关的信息。"
+                st.error(
+                    "检索或模型调用失败。"
                 )
 
-                usage = None
+                with st.expander(
+                    "查看问答错误详情"
+                ):
+                    st.code(str(error))
 
             # 整理引用来源
             sources = []
 
+            # 记录已经添加过的“文件 + 页码”
+            seen_sources = set()
+
             for doc in documents:
                 page = doc.metadata.get("page")
 
+                source_name = doc.metadata.get(
+                    "source",
+                    "未知来源"
+                )
+
+                # 文件路径和页码共同组成唯一标识
+                source_key = (
+                    source_name,
+                    page
+                )
+
+                # 相同文件的相同页码只显示一次
+                if source_key in seen_sources:
+                    continue
+
+                seen_sources.add(source_key)
+
                 sources.append({
-                    "source": doc.metadata.get(
-                        "source",
-                        "未知来源"
-                    ),
+                    "source": source_name,
                     "page": (
                         page + 1
                         if page is not None
                         else None
+                    ),
+                    "score": doc.metadata.get(
+                        "distance_score"
                     ),
                     "content": doc.page_content
                 })
@@ -354,6 +510,14 @@ if user_input:
                             )
 
                         st.markdown(source_title)
+
+                        score = source.get("score")
+
+                        if score is not None:
+                            st.caption(
+                                f"检索距离：{score:.4f}"
+                            )
+
                         st.write(source["content"])
 
             # 显示本次 Token 与费用
@@ -380,23 +544,34 @@ if user_input:
 
 # 保存当前知识库索引
 if st.sidebar.button("保存当前知识库索引"):
-    index_name = Path(
-        st.session_state.active_pdf_name
-    ).stem
+    try:
+        index_name = Path(
+            st.session_state.active_pdf_name
+        ).stem
 
-    index_path = (
-        Path("vectorstores")
-        / "uploads"
-        / index_name
-    )
+        index_path = (
+            Path("vectorstores")
+            / "uploads"
+            / index_name
+        )
 
-    st.session_state.active_vectorstore.save_local(
-        str(index_path)
-    )
+        st.session_state.active_vectorstore.save_local(
+            str(index_path)
+        )
 
-    st.sidebar.success(
-        f"索引已保存：{index_name}"
-    )
+        st.sidebar.success(
+            f"索引已保存：{index_name}"
+        )
+
+    except Exception as error:
+        st.sidebar.error(
+            "当前知识库索引保存失败。"
+        )
+
+        with st.sidebar.expander(
+            "查看保存错误详情"
+        ):
+            st.code(str(error))
     
 # 清空对话
 if st.sidebar.button("清空对话"):
