@@ -8,3 +8,4 @@ pypdf
 langchain-huggingface
 sentence-transformers
 faiss-cpuji
+pytest

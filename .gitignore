@@ -13,3 +13,6 @@ uploads/
 vectorstores/
 
 knowledge/test.pdf
+
+# Test cache
+.pytest_cache/

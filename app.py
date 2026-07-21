@@ -1,7 +1,12 @@
 from pathlib import Path
 from langchain_core.documents import Document
 import streamlit as st
-
+from config import (
+    MAX_PDF_COUNT,
+    MAX_RETRIEVAL_DISTANCE,
+    MAX_TOTAL_PDF_SIZE_MB,
+    RETRIEVAL_K
+)
 from llm import get_rag_response
 from rag import (
     build_context,
@@ -134,9 +139,6 @@ uploaded_files = st.sidebar.file_uploader(
 )
 
 if uploaded_files:
-    max_pdf_count = 10
-    max_total_size_mb = 50
-
     total_size_mb = sum(
         uploaded_file.size
         for uploaded_file in uploaded_files
@@ -144,18 +146,18 @@ if uploaded_files:
 
     upload_is_valid = True
 
-    if len(uploaded_files) > max_pdf_count:
+    if len(uploaded_files) > MAX_PDF_COUNT:
         st.sidebar.error(
             f"一次最多上传 "
-            f"{max_pdf_count} 个 PDF。"
+            f"{MAX_PDF_COUNT} 个 PDF。"
         )
 
         upload_is_valid = False
 
-    if total_size_mb > max_total_size_mb:
+    if total_size_mb > MAX_TOTAL_PDF_SIZE_MB:
         st.sidebar.error(
             f"PDF 总大小不能超过 "
-            f"{max_total_size_mb} MB。"
+            f"{MAX_TOTAL_PDF_SIZE_MB} MB。"
         )
 
         upload_is_valid = False
@@ -405,8 +407,8 @@ if user_input:
                     retrieve_from_vectorstore(
                         st.session_state.active_vectorstore,
                         user_input,
-                        k=6,
-                        max_distance=1.2
+                        k=RETRIEVAL_K,
+                        max_distance=MAX_RETRIEVAL_DISTANCE
                     )
                 )
 

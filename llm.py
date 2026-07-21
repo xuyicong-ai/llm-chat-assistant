@@ -1,31 +1,36 @@
-import os
 from openai import OpenAI
-from dotenv import load_dotenv
+
+from config import (
+    CACHE_HIT_PRICE,
+    CACHE_MISS_PRICE,
+    DEEPSEEK_API_KEY,
+    DEEPSEEK_BASE_URL,
+    DEEPSEEK_MODEL,
+    LLM_MAX_TOKENS,
+    LLM_TEMPERATURE,
+    OUTPUT_TOKEN_PRICE
+)
 from prompt import SYSTEM_PROMPT, build_rag_prompt
 
-load_dotenv()
-
-deepseek_api_key = os.getenv(
-    "DEEPSEEK_API_KEY"
-)
 
 client = (
     OpenAI(
-        api_key=deepseek_api_key,
-        base_url="https://api.deepseek.com"
+        api_key=DEEPSEEK_API_KEY,
+        base_url=DEEPSEEK_BASE_URL
     )
-    if deepseek_api_key
+    if DEEPSEEK_API_KEY
     else None
 )
+
 
 def get_llm_response(messages):
     """
     messages: list[dict]
+
     例如：
     [
-        {"role": "system", "content": "..."},
         {"role": "user", "content": "你好"},
-        {"role": "assistant", "content": "你好，有什么可以帮你？"}
+        {"role": "assistant", "content": "你好"}
     ]
     """
     if client is None:
@@ -34,16 +39,19 @@ def get_llm_response(messages):
             "请在 .env 文件中配置 API Key，"
             "然后重新启动应用。"
         )
-    
+
     final_messages = [
-        {"role": "system", "content": SYSTEM_PROMPT}
+        {
+            "role": "system",
+            "content": SYSTEM_PROMPT
+        }
     ] + messages
 
     response = client.chat.completions.create(
-        model="deepseek-chat",
+        model=DEEPSEEK_MODEL,
         messages=final_messages,
-        temperature=0.7,
-        max_tokens=500
+        temperature=LLM_TEMPERATURE,
+        max_tokens=LLM_MAX_TOKENS
     )
 
     usage = response.usage
@@ -61,17 +69,31 @@ def get_llm_response(messages):
     ) or 0
 
     estimated_cost = (
-        cache_hit_tokens / 1_000_000 * 0.02
-        + cache_miss_tokens / 1_000_000 * 1.0
-        + usage.completion_tokens / 1_000_000 * 2.0
+        cache_hit_tokens
+        / 1_000_000
+        * CACHE_HIT_PRICE
+        + cache_miss_tokens
+        / 1_000_000
+        * CACHE_MISS_PRICE
+        + usage.completion_tokens
+        / 1_000_000
+        * OUTPUT_TOKEN_PRICE
     )
 
     return {
-        "content": response.choices[0].message.content,
+        "content": (
+            response.choices[0].message.content
+        ),
         "usage": {
-            "prompt_tokens": usage.prompt_tokens,
-            "completion_tokens": usage.completion_tokens,
-            "total_tokens": usage.total_tokens,
+            "prompt_tokens": (
+                usage.prompt_tokens
+            ),
+            "completion_tokens": (
+                usage.completion_tokens
+            ),
+            "total_tokens": (
+                usage.total_tokens
+            ),
             "estimated_cost": estimated_cost
         }
     }
@@ -79,7 +101,11 @@ def get_llm_response(messages):
 
 def get_rag_response(messages, context):
     question = messages[-1]["content"]
-    rag_prompt = build_rag_prompt(question, context)
+
+    rag_prompt = build_rag_prompt(
+        question,
+        context
+    )
 
     rag_messages = messages[:-1] + [
         {

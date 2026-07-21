@@ -1,8 +1,17 @@
 from pathlib import Path
+from functools import lru_cache
 from langchain_community.document_loaders import TextLoader, PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
+from config import (
+    CHUNK_OVERLAP,
+    CHUNK_SIZE,
+    EMBEDDING_DEVICE,
+    EMBEDDING_MODEL_NAME,
+    MAX_RETRIEVAL_DISTANCE,
+    RETRIEVAL_K
+)
 
 # 加载 PDF
 def load_pdf_documents(file_path):
@@ -33,7 +42,7 @@ def build_vectorstore(documents):
 
     vectorstore = FAISS.from_documents(
         chunks,
-        embeddings
+        get_embeddings()
     )
     
     return vectorstore
@@ -41,7 +50,7 @@ def build_vectorstore(documents):
 def load_saved_vectorstore(folder_path):
     vectorstore = FAISS.load_local(
         folder_path,
-        embeddings,
+        get_embeddings(),
         allow_dangerous_deserialization=True
     )
 
@@ -50,8 +59,8 @@ def load_saved_vectorstore(folder_path):
 def retrieve_from_vectorstore(
     vectorstore,
     query,
-    k=3,
-    max_distance=0.8
+    k=RETRIEVAL_K,
+    max_distance=MAX_RETRIEVAL_DISTANCE
 ):
     scored_results = (
         vectorstore.similarity_search_with_score(
@@ -111,36 +120,39 @@ def build_context(documents):
 
 # 初始化文本切分器
 splitter = RecursiveCharacterTextSplitter(
-    chunk_size=800,
-    chunk_overlap=150
+    chunk_size=CHUNK_SIZE,
+    chunk_overlap=CHUNK_OVERLAP
 )
 
 
-# 初始化 Qwen3 Embedding
-embeddings = HuggingFaceEmbeddings(
-    model_name="./models/qwen3-embedding-0.6b",
-    model_kwargs={
-        "device": "cpu"
-    },
-    encode_kwargs={
-        "normalize_embeddings": True
-    },
-    show_progress=True
-)
+# 第一次使用时才加载 Qwen3 Embedding
+@lru_cache(maxsize=1)
+def get_embeddings():
+    return HuggingFaceEmbeddings(
+        model_name=EMBEDDING_MODEL_NAME,
+        model_kwargs={
+            "device": EMBEDDING_DEVICE
+        },
+        encode_kwargs={
+            "normalize_embeddings": True
+        },
+        show_progress=True
+    )
 
-# 加载原来的 TXT 知识库
-loader = TextLoader(
-    "knowledge/ai_notes.txt",
-    encoding="utf-8"
-)
+# 第一次使用时才创建原 TXT 知识库
+@lru_cache(maxsize=1)
+def get_default_text_vectorstore():
+    loader = TextLoader(
+        "knowledge/ai_notes.txt",
+        encoding="utf-8"
+    )
 
-documents = loader.load()
+    documents = loader.load()
+    vectorstore = build_vectorstore(documents)
 
+    print("TXT FAISS数据库创建成功")
 
-# 创建原 TXT 的 FAISS 数据库
-vectorstore = build_vectorstore(documents)
-
-print("TXT FAISS数据库创建成功")
+    return vectorstore
 
 
 # 在原 TXT 知识库中检索，并进行距离过滤
@@ -149,6 +161,8 @@ def retrieve_documents(
     k=2,
     max_distance=0.8
 ):
+    vectorstore = get_default_text_vectorstore()
+
     scored_results = (
         vectorstore.similarity_search_with_score(
             query,
@@ -167,6 +181,8 @@ def retrieve_documents(
 
 # 查看原 TXT 知识库的原始检索距离
 def retrieve_documents_with_scores(query, k=3):
+    vectorstore = get_default_text_vectorstore()
+
     return vectorstore.similarity_search_with_score(
         query,
         k=k
