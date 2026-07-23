@@ -1,0 +1,95 @@
+[
+  {
+    "id": "q001",
+    "question": "为什么夜间佩戴时长是一个值得研究的影响因素？",
+    "expected_locations": [
+      {
+        "source": "讲稿.pdf",
+        "pages": [3]
+      },
+      {
+        "source": "许易璁 论文.pdf",
+        "pages": [13, 31, 33, 34]
+      }
+    ],
+    "answer_keywords": [
+      "可干预",
+      "近视控制",
+      "非线性",
+      "临床"
+    ]
+  },
+  {
+    "id": "q002",
+    "question": "研究最终纳入了多少例受试者，数据清洗时如何处理眼轴异常缩短？",
+    "expected_locations": [
+      {
+        "source": "许易璁 论文.pdf",
+        "pages": [17, 18, 23]
+      }
+    ],
+    "answer_keywords": [
+      "72例",
+      "0.10mm",
+      "异常",
+      "剔除",
+      "基本稳定"
+    ]
+  },
+  {
+    "id": "q003",
+    "question": "夜间佩戴时长被划分为哪三个组？",
+    "expected_locations": [
+      {
+        "source": "讲稿.pdf",
+        "pages": [4]
+      },
+      {
+        "source": "许易璁 论文.pdf",
+        "pages": [18, 24]
+      }
+    ],
+    "answer_keywords": [
+      "小于7小时",
+      "7至9小时",
+      "大于等于9小时"
+    ]
+  },
+  {
+    "id": "q004",
+    "question": "夜间佩戴时长与3个月和6个月眼轴变化量有什么关系？",
+    "expected_locations": [
+      {
+        "source": "许易璁 论文.pdf",
+        "pages": [24, 29]
+      }
+    ],
+    "answer_keywords": [
+      "-0.388",
+      "-0.381",
+      "显著负相关",
+      "眼轴增长量越小"
+    ]
+  },
+  {
+    "id": "q005",
+    "question": "为什么约9小时不能被直接当作普遍适用的绝对临床界值？",
+    "expected_locations": [
+      {
+        "source": "许易璁 论文.pdf",
+        "pages": [32, 35]
+      },
+      {
+        "source": "讲稿.pdf",
+        "pages": [5]
+      }
+    ],
+    "answer_keywords": [
+      "回顾性",
+      "样本",
+      "模型",
+      "统计相关",
+      "进一步验证"
+    ]
+  }
+]
